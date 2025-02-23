@@ -34,9 +34,19 @@ class SlidingWindowAttention(nn.Module):
         batch_size, seq_length, _ = x.shape
         
         # Project queries, keys, and values
-        q = rearrange(self.q_proj(x), 'b n (h d) -> b h n d', h=self.num_attention_heads)
-        k = rearrange(self.k_proj(x), 'b n (h d) -> b h n d', h=self.num_attention_heads)
-        v = rearrange(self.v_proj(x), 'b n (h d) -> b h n d', h=self.num_attention_heads)
+        q = self.q_proj(x)
+        k = self.k_proj(x)
+        v = self.v_proj(x)
+        
+        # Reshape for multi-head attention
+        q = mx.reshape(q, (batch_size, seq_length, self.num_attention_heads, self.head_dim))
+        k = mx.reshape(k, (batch_size, seq_length, self.num_attention_heads, self.head_dim))
+        v = mx.reshape(v, (batch_size, seq_length, self.num_attention_heads, self.head_dim))
+        
+        # Transpose for attention computation
+        q = mx.transpose(q, (0, 2, 1, 3))  # (batch_size, num_heads, seq_length, head_dim)
+        k = mx.transpose(k, (0, 2, 1, 3))
+        v = mx.transpose(v, (0, 2, 1, 3))
         
         # Compute attention scores with sliding window
         scores = []
@@ -57,7 +67,9 @@ class SlidingWindowAttention(nn.Module):
         
         # Apply attention to values
         context = mx.matmul(attention, v)
-        context = rearrange(context, 'b h n d -> b n (h d)')
+        # Reshape back to original dimensions
+        context = mx.transpose(context, (0, 2, 1, 3))  # (batch_size, seq_length, num_heads, head_dim)
+        context = mx.reshape(context, (batch_size, seq_length, self.hidden_size))
         
         return self.o_proj(context)
 
